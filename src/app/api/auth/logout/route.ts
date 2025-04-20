@@ -1,27 +1,14 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { clearAuthCookie } from '@/lib/auth/utils';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
-    // 清除会话Cookie
-    cookies().set({
-      name: 'session_token',
-      value: '',
-      httpOnly: true,
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 0, // 立即过期
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: '已成功退出登录'
-    });
+    // 清除认证cookie
+    clearAuthCookie();
+    
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('退出登录错误:', error);
-    return NextResponse.json(
-      { error: '退出登录过程中发生错误' },
-      { status: 500 }
-    );
+    console.error('注销错误:', error);
+    return NextResponse.json({ error: '注销失败，请稍后再试' }, { status: 500 });
   }
 }

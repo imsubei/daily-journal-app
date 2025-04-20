@@ -1,45 +1,55 @@
-import { createHash, randomBytes } from 'crypto';
+import * as bcrypt from 'bcryptjs';
+import * as jwt from 'jsonwebtoken';
+import { cookies } from 'next/headers';
 
-// 生成随机盐值
-export function generateSalt(length: number = 16): string {
-  return randomBytes(length).toString('hex');
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const SALT_ROUNDS = 10;
+
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, SALT_ROUNDS);
 }
 
-// 使用SHA-256哈希密码
-export function hashPassword(password: string, salt: string): string {
-  const hash = createHash('sha256');
-  hash.update(password + salt);
-  return hash.digest('hex');
+export async function comparePasswords(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
 }
 
-// 验证密码
-export function verifyPassword(password: string, salt: string, storedHash: string): boolean {
-  const hash = hashPassword(password, salt);
-  return hash === storedHash;
+export function generateToken(userId: string): string {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-// 生成会话令牌
-export function generateSessionToken(): string {
-  return randomBytes(32).toString('hex');
-}
-
-// 解析用户ID从会话令牌
-export function parseUserIdFromToken(token: string): number | null {
+export function verifyToken(token: string): any {
   try {
-    // 在实际应用中，这里应该验证令牌的有效性
-    // 这里简化处理，假设令牌的前部分是用户ID
-    const parts = token.split('.');
-    if (parts.length >= 2) {
-      return parseInt(parts[0], 10);
-    }
-    return null;
+    return jwt.verify(token, JWT_SECRET);
   } catch (error) {
     return null;
   }
 }
 
-// 创建会话令牌
-export function createSessionToken(userId: number): string {
-  const tokenPart = randomBytes(24).toString('hex');
-  return `${userId}.${tokenPart}`;
+export function setAuthCookie(token: string) {
+  cookies().set({
+    name: 'auth_token',
+    value: token,
+    httpOnly: true,
+    path: '/',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  });
+}
+
+export function getAuthCookie() {
+  return cookies().get('auth_token')?.value;
+}
+
+export function clearAuthCookie() {
+  cookies().delete('auth_token');
+}
+
+export async function getCurrentUser() {
+  const token = getAuthCookie();
+  if (!token) return null;
+  
+  const decoded = verifyToken(token);
+  if (!decoded) return null;
+  
+  return decoded.userId;
 }

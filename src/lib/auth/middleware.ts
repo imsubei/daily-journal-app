@@ -1,61 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { parseUserIdFromToken } from '@/lib/auth/utils';
-import { getDbContext } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth/utils';
 
-// 中间件类型定义
-type MiddlewareHandler = (
-  request: NextRequest,
-  userId: number
-) => Promise<NextResponse>;
-
-// 创建需要认证的API路由处理器
-export function withAuth(handler: MiddlewareHandler) {
-  return async (request: NextRequest) => {
-    try {
-      // 获取会话令牌
-      const sessionToken = cookies().get('session_token')?.value;
-
-      if (!sessionToken) {
-        return NextResponse.json(
-          { error: '未授权，请先登录' },
-          { status: 401 }
-        );
-      }
-
-      // 解析用户ID
-      const userId = parseUserIdFromToken(sessionToken);
-      
-      if (!userId) {
-        return NextResponse.json(
-          { error: '无效的会话，请重新登录' },
-          { status: 401 }
-        );
-      }
-
-      const { DB } = await getDbContext();
-
-      // 验证用户是否存在
-      const user = await DB
-        .prepare('SELECT id FROM users WHERE id = ?')
-        .bind(userId)
-        .first();
-
-      if (!user) {
-        return NextResponse.json(
-          { error: '用户不存在，请重新登录' },
-          { status: 401 }
-        );
-      }
-
-      // 调用实际的处理函数
-      return handler(request, userId);
-    } catch (error) {
-      console.error('认证中间件错误:', error);
-      return NextResponse.json(
-        { error: '认证过程中发生错误' },
-        { status: 500 }
-      );
-    }
-  };
+export async function middleware(request: NextRequest) {
+  // 公开路径，不需要认证
+  const publicPaths = ['/login', '/register', '/'];
+  const path = request.nextUrl.pathname;
+  
+  if (publicPaths.includes(path)) {
+    return NextResponse.next();
+  }
+  
+  // 检查用户是否已认证
+  const userId = await getCurrentUser();
+  
+  if (!userId) {
+    // 用户未认证，重定向到登录页面
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+  
+  // 用户已认证，继续请求
+  return NextResponse.next();
 }
