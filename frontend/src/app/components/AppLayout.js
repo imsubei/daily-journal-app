@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useAuth } from './contexts/AuthContext';
-import ReminderSystem from './components/ReminderSystem';
+import { useAuth } from '../contexts/AuthContext';
+import ReminderSystem from '../components/ReminderSystem';
 
 export default function AppLayout({ children }) {
   const { user, logout, isAuthenticated } = useAuth();

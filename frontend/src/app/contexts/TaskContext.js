@@ -1,156 +1,139 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
-import { taskService, deepseekService } from '../services/api';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAuth } from './AuthContext';
+import api from '../services/api';
 
-// 创建待办事项上下文
 const TaskContext = createContext();
 
-// 待办事项提供者组件
-export const TaskProvider = ({ children }) => {
+export function TaskProvider({ children }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  // 获取所有待办事项
-  const fetchTasks = async (completed) => {
+  const { isAuthenticated } = useAuth();
+  
+  const fetchTasks = useCallback(async () => {
+    if (!isAuthenticated) return;
+    
     setLoading(true);
     setError(null);
+    
     try {
-      const response = await taskService.getTasks(completed);
-      setTasks(response.tasks);
-      return response.tasks;
-    } catch (error) {
-      setError(error.response?.data?.error || '获取待办事项失败');
-      console.error('获取待办事项失败:', error);
-      throw error;
+      const response = await api.get('/api/tasks');
+      setTasks(response.data);
+    } catch (err) {
+      setError('获取待办事项失败');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+  
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchTasks();
+    }
+  }, [isAuthenticated, fetchTasks]);
+  
+  const createTask = async (content, journalId) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await api.post('/api/tasks', { content, journalId });
+      setTasks(prevTasks => [...prevTasks, response.data]);
+      return response.data;
+    } catch (err) {
+      setError('创建待办事项失败');
+      console.error(err);
+      throw err;
     } finally {
       setLoading(false);
     }
   };
-
-  // 创建新待办事项
-  const createTask = async (taskData) => {
+  
+  const updateTask = async (taskId, updates) => {
     setLoading(true);
     setError(null);
+    
     try {
-      const response = await taskService.createTask(taskData);
-      setTasks([response.task, ...tasks]);
-      return response.task;
-    } catch (error) {
-      setError(error.response?.data?.error || '创建待办事项失败');
-      console.error('创建待办事项失败:', error);
-      throw error;
+      const response = await api.put(`/api/tasks/${taskId}`, updates);
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task._id === taskId ? { ...task, ...response.data } : task
+        )
+      );
+      return response.data;
+    } catch (err) {
+      setError('更新待办事项失败');
+      console.error(err);
+      throw err;
     } finally {
       setLoading(false);
     }
   };
-
-  // 更新待办事项
-  const updateTask = async (id, taskData) => {
+  
+  const deleteTask = async (taskId) => {
     setLoading(true);
     setError(null);
+    
     try {
-      const response = await taskService.updateTask(id, taskData);
-      setTasks(tasks.map(task => 
-        task._id === id ? response.task : task
-      ));
-      return response.task;
-    } catch (error) {
-      setError(error.response?.data?.error || '更新待办事项失败');
-      console.error('更新待办事项失败:', error);
-      throw error;
+      await api.delete(`/api/tasks/${taskId}`);
+      setTasks(prevTasks => prevTasks.filter(task => task._id !== taskId));
+    } catch (err) {
+      setError('删除待办事项失败');
+      console.error(err);
+      throw err;
     } finally {
       setLoading(false);
     }
   };
-
-  // 删除待办事项
-  const deleteTask = async (id) => {
+  
+  const extractTasksFromJournal = async (journalId, journalContent) => {
     setLoading(true);
     setError(null);
+    
     try {
-      await taskService.deleteTask(id);
-      setTasks(tasks.filter(task => task._id !== id));
-    } catch (error) {
-      setError(error.response?.data?.error || '删除待办事项失败');
-      console.error('删除待办事项失败:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 更新提醒状态
-  const updateReminderStatus = async (id) => {
-    setError(null);
-    try {
-      const response = await taskService.updateReminderStatus(id);
-      setTasks(tasks.map(task => 
-        task._id === id ? response.task : task
-      ));
-      return response.task;
-    } catch (error) {
-      setError(error.response?.data?.error || '更新提醒状态失败');
-      console.error('更新提醒状态失败:', error);
-      throw error;
-    }
-  };
-
-  // 从日记内容提取待办事项
-  const extractTasksFromJournal = async (journalId, content) => {
-    setLoading(true);
-    setError(null);
-    try {
-      // 调用DeepSeek API提取待办事项
-      const extractedTasks = await deepseekService.extractTasks(content);
+      const response = await api.post(`/api/journals/${journalId}/extract-tasks`, {
+        content: journalContent
+      });
       
-      // 创建提取的待办事项
-      const createdTasks = [];
-      for (const taskContent of extractedTasks) {
-        const taskData = {
-          content: taskContent,
-          journalId,
-          originalText: taskContent
-        };
-        const response = await taskService.createTask(taskData);
-        createdTasks.push(response.task);
+      if (response.data.tasks && response.data.tasks.length > 0) {
+        setTasks(prevTasks => [...prevTasks, ...response.data.tasks]);
       }
       
-      // 更新任务列表
-      setTasks([...createdTasks, ...tasks]);
-      
-      return createdTasks;
-    } catch (error) {
-      setError(error.response?.data?.error || '提取待办事项失败');
-      console.error('提取待办事项失败:', error);
-      throw error;
+      return response.data.tasks || [];
+    } catch (err) {
+      setError('从日记中提取待办事项失败');
+      console.error(err);
+      throw err;
     } finally {
       setLoading(false);
     }
   };
+  
+  return (
+    <TaskContext.Provider
+      value={{
+        tasks,
+        loading,
+        error,
+        fetchTasks,
+        createTask,
+        updateTask,
+        deleteTask,
+        extractTasksFromJournal
+      }}
+    >
+      {children}
+    </TaskContext.Provider>
+  );
+}
 
-  // 提供的上下文值
-  const value = {
-    tasks,
-    loading,
-    error,
-    fetchTasks,
-    createTask,
-    updateTask,
-    deleteTask,
-    updateReminderStatus,
-    extractTasksFromJournal
-  };
-
-  return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
-};
-
-// 自定义钩子，用于访问待办事项上下文
-export const useTask = () => {
+export function useTask() {
   const context = useContext(TaskContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useTask must be used within a TaskProvider');
   }
   return context;
-};
+}

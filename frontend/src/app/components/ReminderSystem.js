@@ -1,129 +1,98 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTask } from '../contexts/TaskContext';
-import { useSettings } from '../contexts/SettingsContext';
 
 export default function ReminderSystem() {
-  const { tasks, fetchTasks, updateTask, updateReminderStatus } = useTask();
-  const { settings, fetchSettings } = useSettings();
+  const { tasks, updateTask } = useTask();
   const [pendingTasks, setPendingTasks] = useState([]);
   const [currentReminder, setCurrentReminder] = useState(null);
-  const [showReminder, setShowReminder] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-
-  // 初始化
-  useEffect(() => {
-    const init = async () => {
-      await fetchSettings();
-      await fetchTasks(false); // 获取未完成的任务
-      setInitialized(true);
-    };
-    
-    init();
-  }, []);
-
-  // 监听未完成任务变化
+  const [isReminderVisible, setIsReminderVisible] = useState(false);
+  
+  // 过滤出未完成的任务
   useEffect(() => {
     if (tasks && tasks.length > 0) {
-      setPendingTasks(tasks.filter(task => !task.completed));
-    } else {
-      setPendingTasks([]);
+      const incomplete = tasks.filter(task => !task.completed);
+      setPendingTasks(incomplete);
     }
   }, [tasks]);
-
-  // 提醒系统
+  
+  // 设置提醒定时器
   useEffect(() => {
-    if (!initialized || pendingTasks.length === 0 || !settings) return;
-    
-    const reminderInterval = settings.reminderInterval * 60 * 1000; // 转换为毫秒
-    
-    // 检查是否有任务需要提醒
-    const checkReminders = () => {
-      const now = new Date();
-      
-      // 找出需要提醒的任务
-      const tasksToRemind = pendingTasks.filter(task => {
-        // 如果从未提醒过，或者上次提醒时间已经超过了提醒间隔
-        return !task.lastReminderTime || 
-               (now - new Date(task.lastReminderTime)) > reminderInterval;
-      });
-      
-      if (tasksToRemind.length > 0) {
-        // 选择一个任务进行提醒
-        const taskToRemind = tasksToRemind[0];
-        setCurrentReminder(taskToRemind);
-        setShowReminder(true);
+    if (pendingTasks.length > 0) {
+      const interval = setInterval(() => {
+        // 随机选择一个未完成的任务进行提醒
+        const randomIndex = Math.floor(Math.random() * pendingTasks.length);
+        const taskToRemind = pendingTasks[randomIndex];
         
-        // 更新提醒状态
-        updateReminderStatus(taskToRemind._id);
-      }
-    };
-    
-    // 立即检查一次
-    checkReminders();
-    
-    // 设置定期检查
-    const intervalId = setInterval(checkReminders, 60000); // 每分钟检查一次
-    
-    return () => clearInterval(intervalId);
-  }, [initialized, pendingTasks, settings]);
-
-  // 处理任务完成
-  const handleCompleteTask = async () => {
-    if (!currentReminder) return;
-    
-    try {
-      await updateTask(currentReminder._id, { completed: true });
-      setShowReminder(false);
-      setCurrentReminder(null);
-    } catch (error) {
-      console.error('完成任务失败:', error);
+        setCurrentReminder(taskToRemind);
+        setIsReminderVisible(true);
+        
+        // 更新提醒次数
+        updateTask(taskToRemind._id, { 
+          reminderCount: (taskToRemind.reminderCount || 0) + 1 
+        });
+        
+        // 20秒后自动关闭提醒
+        setTimeout(() => {
+          setIsReminderVisible(false);
+        }, 20000);
+      }, 20 * 60 * 1000); // 每20分钟提醒一次
+      
+      return () => clearInterval(interval);
+    }
+  }, [pendingTasks, updateTask]);
+  
+  // 标记任务为已完成
+  const handleCompleteTask = () => {
+    if (currentReminder) {
+      updateTask(currentReminder._id, { completed: true });
+      setIsReminderVisible(false);
     }
   };
-
-  // 处理稍后提醒
-  const handleRemindLater = () => {
-    setShowReminder(false);
-    setCurrentReminder(null);
+  
+  // 暂时忽略提醒
+  const handleDismissReminder = () => {
+    setIsReminderVisible(false);
   };
-
-  if (!showReminder || !currentReminder) {
+  
+  if (!isReminderVisible || !currentReminder) {
     return null;
   }
-
+  
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 m-4 max-w-sm w-full">
-        <div className="mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">待办事项提醒</h3>
-          <p className="text-sm text-gray-500">
-            这个任务已经等待完成一段时间了
-          </p>
-        </div>
-        
-        <div className="mb-6 p-4 bg-yellow-50 rounded-md border border-yellow-200">
-          <p className="text-gray-800 font-medium">{currentReminder.content}</p>
-          <p className="text-sm text-gray-600 mt-2">
-            <span className="font-medium">来源：</span>
-            {currentReminder.originalText}
-          </p>
-        </div>
-        
-        <div className="flex justify-end space-x-3">
-          <button
-            onClick={handleRemindLater}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-          >
-            稍后提醒
-          </button>
-          <button
-            onClick={handleCompleteTask}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-          >
-            标记为已完成
-          </button>
-        </div>
+    <div className="fixed bottom-4 right-4 max-w-sm w-full bg-white rounded-lg shadow-lg p-4 border border-indigo-200 z-50">
+      <div className="flex justify-between items-start">
+        <h3 className="text-lg font-medium text-gray-900">待办事项提醒</h3>
+        <button
+          onClick={handleDismissReminder}
+          className="text-gray-400 hover:text-gray-500"
+        >
+          <span className="sr-only">关闭</span>
+          <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </div>
+      <div className="mt-2">
+        <p className="text-gray-700">{currentReminder.content}</p>
+        <p className="text-sm text-gray-500 mt-1">
+          这是第 {currentReminder.reminderCount || 1} 次提醒
+        </p>
+      </div>
+      <div className="mt-4 flex space-x-3">
+        <button
+          onClick={handleCompleteTask}
+          className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        >
+          标记为已完成
+        </button>
+        <button
+          onClick={handleDismissReminder}
+          className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+        >
+          稍后提醒
+        </button>
       </div>
     </div>
   );
