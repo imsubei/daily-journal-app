@@ -10,7 +10,9 @@ const nextConfig = {
   },
   eslint: {
     ignoreDuringBuilds: true,
-  }
+  },
+  // 禁用React严格模式，避免潜在的兼容性问题
+  reactStrictMode: false
 };
 
 module.exports = nextConfig;
