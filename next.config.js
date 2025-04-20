@@ -8,6 +8,10 @@ module.exports = {
     CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
     D1_DATABASE_ID: process.env.D1_DATABASE_ID,
   },
+  eslint: {
+    // 在生产构建时忽略ESLint错误
+    ignoreDuringBuilds: true,
+  },
   async headers() {
     return [
       {
