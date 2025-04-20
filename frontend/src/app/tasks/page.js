@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import AppLayout from '../components/AppLayout';
-import { useTasks } from '../contexts/TaskContext';
+import { useTask } from '../contexts/TaskContext';
 
 export default function TasksPage() {
-  const { tasks, fetchTasks, updateTask } = useTasks();
+  const { tasks, fetchTasks, updateTask } = useTask();
   const [filter, setFilter] = useState('all'); // all, pending, completed
   
   useEffect(() => {
